@@ -850,17 +850,6 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
     Returns:
         Tuple of (success, full_output_doc, final_response, error_message)
     """
-    from run_agent import AIAgent
-    
-    # Initialize SQLite session store so cron job messages are persisted
-    # and discoverable via session_search (same pattern as gateway/run.py).
-    _session_db = None
-    try:
-        from hermes_state import SessionDB
-        _session_db = SessionDB()
-    except Exception as e:
-        logger.debug("Job '%s': SQLite session store not available: %s", job.get("id", "?"), e)
-    
     job_id = job["id"]
     job_name = job["name"]
 
@@ -870,6 +859,10 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
     # This mirrors the classic "run a bash script on a timer, send its
     # stdout to telegram" watchdog pattern. The agent path is skipped
     # entirely: no AIAgent, no prompt, no tool loop, no token spend.
+    #
+    # We check this BEFORE importing run_agent / constructing SessionDB so
+    # a pure-script tick never pays for the agent machinery it isn't going
+    # to use. Keep this block self-contained.
     #
     # Semantics:
     #   - script stdout (trimmed) → delivered verbatim as the final message
@@ -962,6 +955,23 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
             f"{output}\n"
         )
         return True, doc, output, None
+
+    # ---------------------------------------------------------------
+    # Default (LLM) path — import and construct the agent machinery now
+    # that we know we actually need it. Doing these imports here instead of
+    # at module top keeps no_agent ticks from paying for AIAgent / SessionDB
+    # construction costs.
+    # ---------------------------------------------------------------
+    from run_agent import AIAgent
+
+    # Initialize SQLite session store so cron job messages are persisted
+    # and discoverable via session_search (same pattern as gateway/run.py).
+    _session_db = None
+    try:
+        from hermes_state import SessionDB
+        _session_db = SessionDB()
+    except Exception as e:
+        logger.debug("Job '%s': SQLite session store not available: %s", job.get("id", "?"), e)
 
     # Wake-gate: if this job has a pre-check script, run it BEFORE building
     # the prompt so a ``{"wakeAgent": false}`` response can short-circuit
