@@ -665,12 +665,17 @@ class DiscordAdapter(BasePlatformAdapter):
             #   DISCORD_PRIVILEGED_INTENTS=true       — request ALL privileged intents
             #
             # Default: do NOT request privileged intents (bot works in DMs without them).
-            intents = Intents.default()
-            intents.dm_messages = True
-            intents.guild_messages = True
-            intents.voice_states = True
-            intents.message_content = False  # Default: don't request privileged intent
-            intents.members = False  # Default: don't request privileged intent
+            # Use Intents.none() to avoid requesting privileged intents by default.
+            # Intents.default() includes guild_members which is privileged!
+            intents = Intents.none()
+            intents.guilds = True  # Basic server info (not privileged)
+            intents.guild_messages = True  # Read messages in servers
+            intents.dm_messages = True  # Read DMs (not privileged)
+            intents.guild_message_reactions = True  # Reaction events
+            intents.voice_states = True  # Voice channel events
+            # Privileged intents disabled by default:
+            intents.message_content = False  # Must be enabled in Discord Portal
+            intents.members = False  # Must be enabled in Discord Portal
 
             # Privileged intents — only request if explicitly enabled
             _privileged_enabled = os.getenv(
